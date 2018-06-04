@@ -128,9 +128,18 @@ docker_build() {
 #
 docker_run() {
 	local interactive_options
+	local tmp_launcher
 
 	if tty -s; then
 		interactive_options="-ti"
+	fi
+
+	# If possible, map cqfd_user from the calling user's
+	# FIXME: make this an option
+	if [ -n "$USER" ]; then
+		cqfd_user="$USER"
+		cqfd_user_home="$(cd $HOME; pwd -P)"
+		cqfd_user_cwd="$PWD"
 	fi
 
 	# The user may set the CQFD_EXTRA_VOLUMES environment variable
@@ -173,8 +182,12 @@ docker_run() {
 		home_env_var=""
 	fi
 
-	docker run --privileged -v "$PWD":$cqfd_user_cwd \
+	tmp_launcher=$(make_launcher)
+
+	docker run --privileged \
+	       -v $tmp_launcher:/bin/cqfd_launch \
 	       -v ~/.ssh:$cqfd_user_home/.ssh \
+	       -v "$PWD":$cqfd_user_cwd \
 	       --rm \
 	       --log-driver=none \
 	       $extravol \
@@ -185,11 +198,9 @@ docker_run() {
 	       $interactive_options \
 	       ${SSH_AUTH_SOCK:+ -v $SSH_AUTH_SOCK:$cqfd_user_home/.sockets/ssh} \
 	       ${SSH_AUTH_SOCK:+ -e SSH_AUTH_SOCK=$cqfd_user_home/.sockets/ssh} \
-	       $docker_img_name \
-	       /bin/bash -c "groupadd -og $GROUPS -f builders && \
-	       useradd -s /bin/bash -ou $UID -g $GROUPS $cqfd_user && \
-	       chown $UID:$GROUPS $cqfd_user_home && \
-	       su $cqfd_user -p -c \"cd $cqfd_user_cwd && $1\" 2>&1"
+	       $docker_img_name cqfd_launch "$@" 2>&1
+
+	rm -f $tmp_launcher
 }
 
 # make_archive(): Create a release package.
@@ -251,6 +262,28 @@ make_archive() {
 	*)
 		;;
 	esac
+}
+
+# make_launcher - generate in-container launcher script
+# return: the path to the launcher script on stdout
+make_launcher()
+{
+	local tmpfile=$(mktemp)
+
+	chmod 0755 $tmpfile
+	cat >$tmpfile <<EOF
+#!/bin/sh
+
+# create container user to match expected environment
+groupadd -og $GROUPS -f builders >/dev/null 2>&1
+useradd -s /bin/bash -ou $UID -g $GROUPS $cqfd_user >/dev/null 2>&1
+chown $UID:$GROUPS $cqfd_user_home
+
+# run the provided command in the working directory
+cd $cqfd_user_cwd
+su $cqfd_user -p -c "\$@"
+EOF
+	echo $tmpfile
 }
 
 # config_load() - load build settings from cqfdrc
