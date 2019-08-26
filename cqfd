@@ -205,11 +205,13 @@ make_archive() {
 		die "No files to archive, check files in $cqfdrc"
 	fi
 
-	for file in $release_files; do
-		if [ ! -e $file ]; then
-			die "Cannot release: can't find $file"
-		fi
-	done
+	if [ "$release_ignore_missing" != "true" ]; then
+		for file in $release_files; do
+			if [ ! -e "$file" ]; then
+				die "Cannot release: can't find $file"
+			fi
+		done
+	fi
 
 	# template the generated archive's filename
 	local git_short=`git rev-parse --short HEAD 2>/dev/null`
@@ -234,7 +236,7 @@ make_archive() {
 	eval release_archive=`echo $release_archive`
 
 	# setting tar_transform=yes will move files to the root of a tar archive
-	if [ "$release_transform" = "yes" ]; then
+	if is_true "$release_transform"; then
 		tar_opts='--transform s/.*\///g'
 	fi
 
@@ -316,6 +318,20 @@ EOF
 	echo $tmpfile
 }
 
+# is_true - evaluate a string and return true if string represents
+# a wish of true (1, yes, true etc.)
+is_true() {
+	case "$1" in
+	yes|YES)
+	true|TRUE)
+	1)
+		return 0
+		;;
+	*)
+		return 1
+	esac
+}
+
 # config_load() - load build settings from cqfdrc
 # $1: optional "flavor" of the build, is a suffix of command.
 config_load() {
@@ -344,6 +360,10 @@ config_load() {
 	release_archive="$archive"
 	release_transform="$tar_transform"
 	tar_options="$tar_options"
+
+	if is_true "$ignore_missing_files"; then
+		release_ignore_missing=true
+	fi
 
 	# This will look like fooinc_reponame
 	if [ -n "$project_org" -a -n "$project_name" ]; then

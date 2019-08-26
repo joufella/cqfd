@@ -121,6 +121,11 @@ By default, cqfd will generate a release archive named
 configuration keys. The .tar.xz, .tar.gz and .zip archive formats are
 supported.
 
+Setting ``ignore_missing_files=yes`` will cause all files specified for the
+archive not being checked for existence by cqfd. This is useful when using
+custom archive options where the archived files don't necessarily end up in the
+same directory, for example.
+
 For tar archives:
 
 * Setting ``tar_transform=yes`` will cause all files specified for the
